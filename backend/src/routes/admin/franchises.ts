@@ -325,27 +325,8 @@ export default async function adminFranchisesRoutes(fastify: FastifyInstance) {
 
     await supabase.from('receipts').update(updates).eq('id', orderId)
 
-    // Emit Socket.IO events
-    const io = (fastify as any).io
-    if (io) {
-      // Notify admin namespace
-      io.of('/socket/admin').to(`admin:${restaurantId}`).emit('order_state_changed', {
-        orderId,
-        state: body.state,
-      })
-      // Notify franchise namespace
-      io.of('/socket/franchise').to(`franchise:${order.franchise_id}`).emit('order_state_changed', {
-        orderId,
-        state: body.state,
-      })
-      // Notify customer if present
-      if (order.customer_id) {
-        io.of('/socket/restaurant').to(`customer:${order.customer_id}`).emit('order_state_changed', {
-          orderId,
-          state: body.state,
-        })
-      }
-    }
+    // Supabase Realtime automatically broadcasts the receipts UPDATE to admin,
+    // franchise, and customer subscribers — no additional emit needed here.
 
     return { success: true, state: body.state }
   })

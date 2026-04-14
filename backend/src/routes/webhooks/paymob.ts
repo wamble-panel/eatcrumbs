@@ -83,16 +83,8 @@ export default async function paymobWebhookRoutes(fastify: FastifyInstance) {
         }
       }
 
-      // Emit payment confirmed event via Socket.IO
-      const io = (fastify as any).io
-      if (io) {
-        // Notify customer
-        if (receipt.customer_id) {
-          io.of('/socket/restaurant').to(`customer:${receipt.customer_id}`).emit('payment_confirmed', {
-            receiptId: receipt.id,
-          })
-        }
-      }
+      // Supabase Realtime automatically broadcasts the receipts UPDATE
+      // (is_paid: true, state: PENDING) to the customer's subscription.
 
       fastify.log.info({ receiptId: receipt.id }, 'Paymob: payment confirmed')
     } else {

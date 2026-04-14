@@ -4,7 +4,6 @@ import fastifyMultipart from '@fastify/multipart'
 import { env } from './config/env'
 import corsPlugin from './plugins/cors'
 import rateLimitPlugin from './plugins/rateLimit'
-import socketPlugin from './plugins/socket'
 import { resolveTenant } from './middleware/tenant'
 
 // Admin routes
@@ -29,7 +28,7 @@ import customerUserRoutes from './routes/customer/user'
 // Webhook routes
 import paymobWebhookRoutes from './routes/webhooks/paymob'
 
-async function build() {
+export async function build() {
   const fastify = Fastify({
     logger: {
       level: env.NODE_ENV === 'production' ? 'warn' : 'info',
@@ -48,8 +47,6 @@ async function build() {
   await fastify.register(fastifyMultipart, {
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB global limit
   })
-
-  await fastify.register(socketPlugin)
 
   // ── Global error handler ───────────────────────────────────────────────────
   fastify.setErrorHandler((error: any, _request, reply) => {
@@ -115,4 +112,8 @@ async function start() {
   }
 }
 
-start()
+// Only bind to a port when running directly (not inside a Vercel serverless
+// function). Vercel sets VERCEL=1 in every deployment environment.
+if (!process.env.VERCEL) {
+  start()
+}
