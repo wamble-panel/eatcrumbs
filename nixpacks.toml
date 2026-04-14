@@ -1,0 +1,4 @@
+# Nixpacks can't auto-detect Node because package.json lives in backend/.
+# Declare the provider explicitly so Node/npm are available during the
+# build command defined in railway.json.
+providers = ["node"]
