@@ -93,7 +93,11 @@ export default async function adminFoodicsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Failed to exchange code for token' })
     }
 
-    const tokenData = await tokenRes.json()
+    const tokenData = (await tokenRes.json()) as {
+      access_token: string
+      refresh_token?: string
+      expires_in?: number
+    }
     const expiresAt = tokenData.expires_in
       ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
       : null

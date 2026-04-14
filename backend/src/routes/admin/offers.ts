@@ -336,4 +336,171 @@ export default async function adminOffersRoutes(fastify: FastifyInstance) {
       pageSize: q.pageSize,
     }
   })
+
+  // ── Compiled-admin aliases ──────────────────────────────────────────────────
+
+  // GET /pointing/latest-pointing-system — alias of /loyalty/pointing-system
+  fastify.get('/pointing/latest-pointing-system', { preHandler: requireAdmin }, async (request) => {
+    const restaurantId = request.admin!.restaurant_id
+    const q = z.object({
+      restaurantId: z.coerce.number().int().optional(),
+    }).passthrough().parse(request.query)
+
+    if (q.restaurantId && q.restaurantId !== restaurantId) {
+      return { pointingSystem: null }
+    }
+
+    const { data } = await supabase
+      .from('pointing_systems')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .single()
+
+    return { pointingSystem: data ?? null }
+  })
+
+  // POST /pointing/create-pointing-system — alias of POST /loyalty/pointing-system
+  fastify.post('/pointing/create-pointing-system', { preHandler: requireAdmin }, async (request, reply) => {
+    const restaurantId = request.admin!.restaurant_id
+    const body = z.object({
+      pointsPerUnit: z.number().min(0),
+      minimumSpend: z.number().min(0).default(0),
+      redeemValue: z.number().min(0),
+      pointsRequiredToRedeem: z.number().int().positive(),
+      expiryDays: z.number().int().positive().optional(),
+      isActive: z.boolean().default(true),
+    }).passthrough().parse(request.body)
+
+    const { data: existing } = await supabase
+      .from('pointing_systems')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .single()
+
+    const payload = {
+      restaurant_id: restaurantId,
+      points_per_unit: body.pointsPerUnit,
+      minimum_spend: body.minimumSpend,
+      redeem_value: body.redeemValue,
+      points_required_to_redeem: body.pointsRequiredToRedeem,
+      expiry_days: body.expiryDays ?? null,
+      is_active: body.isActive,
+    }
+
+    let result
+    if (existing) {
+      const { data, error } = await supabase
+        .from('pointing_systems')
+        .update(payload)
+        .eq('restaurant_id', restaurantId)
+        .select()
+        .single()
+      if (error) return reply.status(500).send({ error: error.message })
+      result = data
+    } else {
+      const { data, error } = await supabase
+        .from('pointing_systems')
+        .insert(payload)
+        .select()
+        .single()
+      if (error) return reply.status(500).send({ error: error.message })
+      result = data
+    }
+
+    return { pointingSystem: result }
+  })
+
+  // GET /franchisePackageOffer/all-fto — alias of /offers/list
+  fastify.get('/franchisePackageOffer/all-fto', { preHandler: requireAdmin }, async (request) => {
+    const restaurantId = request.admin!.restaurant_id
+    const q = z.object({
+      franchiseId: z.coerce.number().int().optional(),
+    }).passthrough().parse(request.query)
+
+    let query = supabase
+      .from('franchise_package_offers')
+      .select('id, name, name_arabic, price, image_url, is_active, sort_order, franchise_id')
+      .eq('restaurant_id', restaurantId)
+      .order('sort_order')
+
+    if (q.franchiseId) query = query.eq('franchise_id', q.franchiseId)
+
+    const { data } = await query
+    return { offers: data ?? [] }
+  })
+
+  // POST /franchisePackageOffer/fto — alias of /offers/save
+  fastify.post('/franchisePackageOffer/fto', { preHandler: requireAdmin }, async (request, reply) => {
+    const restaurantId = request.admin!.restaurant_id
+    const body = z.object({
+      id: z.number().int().optional(),
+      franchiseId: z.number().int(),
+      name: z.string().min(1),
+      nameArabic: z.string().optional(),
+      price: z.number().min(0),
+      imageUrl: z.string().url().optional(),
+      isActive: z.boolean().default(true),
+      sortOrder: z.number().int().default(0),
+    }).passthrough().parse(request.body)
+
+    const { data: franchise } = await supabase
+      .from('franchises')
+      .select('id')
+      .eq('id', body.franchiseId)
+      .eq('restaurant_id', restaurantId)
+      .single()
+
+    if (!franchise) return reply.status(403).send({ error: 'Franchise not found' })
+
+    const payload = {
+      restaurant_id: restaurantId,
+      franchise_id: body.franchiseId,
+      name: body.name,
+      name_arabic: body.nameArabic ?? null,
+      price: body.price,
+      image_url: body.imageUrl ?? null,
+      is_active: body.isActive,
+      sort_order: body.sortOrder,
+    }
+
+    let result
+    if (body.id) {
+      const { data, error } = await supabase
+        .from('franchise_package_offers')
+        .update(payload)
+        .eq('id', body.id)
+        .eq('restaurant_id', restaurantId)
+        .select()
+        .single()
+      if (error) return reply.status(500).send({ error: error.message })
+      result = data
+    } else {
+      const { data, error } = await supabase
+        .from('franchise_package_offers')
+        .insert(payload)
+        .select()
+        .single()
+      if (error) return reply.status(500).send({ error: error.message })
+      result = data
+    }
+
+    return { offer: result }
+  })
+
+  // POST /franchisePackageOffer/end-fto — alias of /offers/delete
+  fastify.post('/franchisePackageOffer/end-fto', { preHandler: requireAdmin }, async (request, reply) => {
+    const restaurantId = request.admin!.restaurant_id
+    const body = z.object({
+      id: z.number().int(),
+    }).passthrough().parse(request.body)
+
+    const { error } = await supabase
+      .from('franchise_package_offers')
+      .delete()
+      .eq('id', body.id)
+      .eq('restaurant_id', restaurantId)
+
+    if (error) return reply.status(500).send({ error: error.message })
+    return { success: true }
+  })
 }

@@ -141,4 +141,103 @@ export default async function customerLoyaltyRoutes(fastify: FastifyInstance) {
       referralCount: referralCount ?? 0,
     }
   })
+
+  // ── Compiled-storefront aliases ──────────────────────────────────────────────
+
+  // GET /pointing?restaurantId=X&splitedOfferFromList=Y&customerShortId=Z
+  // — alias of /loyalty/balance. `splitedOfferFromList` and `customerShortId`
+  // are accepted but ignored (no matching columns in schema).
+  fastify.get('/pointing', { preHandler: requireCustomer }, async (request) => {
+    const customerId = request.customer!.customer_id
+    const restaurantId = request.customer!.restaurant_id
+    const q = z.object({
+      restaurantId: z.coerce.number().int().optional(),
+    }).passthrough().parse(request.query)
+
+    if (q.restaurantId && q.restaurantId !== restaurantId) {
+      throw new AppError(403, 'Restaurant does not match customer tenant')
+    }
+
+    const [{ data: customer }, pointingSystem] = await Promise.all([
+      supabase.from('customers').select('points').eq('id', customerId).single(),
+      getPointingSystem(restaurantId),
+    ])
+
+    return {
+      points: customer?.points ?? 0,
+      pointingSystem: pointingSystem ?? null,
+    }
+  })
+
+  // POST /promoCode/  — alias of /promo/validate
+  // Frontend sends only {promoCodeName, restaurantId}; no order total — so we
+  // return the raw promo config and let the client compute the discount (or
+  // recompute at /receipt/confirm, which is the source of truth).
+  fastify.post('/promoCode/', { preHandler: requireCustomer }, async (request) => {
+    const restaurantId = request.customer!.restaurant_id
+    const body = z.object({
+      promoCodeName: z.string().min(1),
+      restaurantId: z.number().int().optional(),
+    }).passthrough().parse(request.body)
+
+    if (body.restaurantId && body.restaurantId !== restaurantId) {
+      throw new AppError(403, 'Restaurant does not match customer tenant')
+    }
+
+    const { data: promo } = await supabase
+      .from('promo_codes')
+      .select('id, code, promo_type, value, min_order, max_uses, uses_count, expires_at')
+      .eq('restaurant_id', restaurantId)
+      .eq('code', body.promoCodeName.toUpperCase())
+      .eq('is_active', true)
+      .single()
+
+    if (!promo) return { valid: false, reason: 'Invalid promo code' }
+    if (promo.expires_at && new Date(promo.expires_at) < new Date()) {
+      return { valid: false, reason: 'Promo code has expired' }
+    }
+    if (promo.max_uses !== null && promo.uses_count >= promo.max_uses) {
+      return { valid: false, reason: 'Promo code has reached its usage limit' }
+    }
+
+    return {
+      valid: true,
+      promo: {
+        code: promo.code,
+        promoType: promo.promo_type,
+        value: promo.value,
+        minOrder: promo.min_order,
+      },
+    }
+  })
+
+  // POST /referralcode/info  — alias of GET /loyalty/referral-info (method differs)
+  fastify.post('/referralcode/info', { preHandler: requireCustomer }, async (request) => {
+    const customerId = request.customer!.customer_id
+    const restaurantId = request.customer!.restaurant_id
+    const body = z.object({
+      restaurantId: z.number().int().optional(),
+    }).passthrough().parse(request.body ?? {})
+
+    if (body.restaurantId && body.restaurantId !== restaurantId) {
+      throw new AppError(403, 'Restaurant does not match customer tenant')
+    }
+
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('referral_code')
+      .eq('id', customerId)
+      .single()
+
+    const { count: referralCount } = await supabase
+      .from('referrals')
+      .select('id', { count: 'exact', head: true })
+      .eq('referrer_id', customerId)
+      .eq('restaurant_id', restaurantId)
+
+    return {
+      referralCode: customer?.referral_code ?? null,
+      referralCount: referralCount ?? 0,
+    }
+  })
 }

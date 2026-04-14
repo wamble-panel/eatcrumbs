@@ -7,6 +7,7 @@ import { getPointingSystem, calculatePointsEarned, calculateRedeemDiscount, awar
 import { initiatePayment } from '../../services/paymob'
 import { notifyOrderPlaced } from '../../services/whatsapp'
 import { OrderType, PaymentMethod, ReceiptState } from '../../types'
+import { env } from '../../config/env'
 
 // ── Schema for a single cart item ─────────────────────────────────────────────
 const cartItemSchema = z.object({
@@ -240,30 +241,44 @@ export default async function customerOrdersRoutes(fastify: FastifyInstance) {
 
     // WhatsApp notification (fire and forget)
     if (customerId && request.customer?.phone_number) {
-      notifyOrderPlaced(request.customer.phone_number, orderNumber).catch(() => {})
+      notifyOrderPlaced({
+        to: request.customer.phone_number,
+        orderId: String(orderNumber),
+        restaurantName: '',
+        items: '',
+        total: String(total),
+        currency: env.PAYMOB_CURRENCY,
+        templateName: 'order_placed',
+      }).catch(() => {})
     }
 
     // If online payment, initiate Paymob
-    if (body.paymentMethod === PaymentMethod.ONLINE_CARD || body.paymentMethod === PaymentMethod.ONLINE) {
+    if (body.paymentMethod === PaymentMethod.ONLINE_CARD) {
       try {
+        const [firstName, ...rest] = (request.customer?.person_name ?? 'Customer').split(' ')
         const payment = await initiatePayment({
           amountCents: Math.round(total * 100),
-          orderId: receipt.id,
-          customerPhone: request.customer?.phone_number ?? '',
-          customerName: request.customer?.person_name ?? 'Customer',
-          customerEmail: '',
+          currency: env.PAYMOB_CURRENCY,
+          receiptId: receipt.id,
+          integrationId: Number(env.PAYMOB_INTEGRATION_ID) || 0,
+          billingData: {
+            first_name: firstName || 'Customer',
+            last_name: rest.join(' ') || 'Guest',
+            email: 'noreply@prepit.app',
+            phone_number: request.customer?.phone_number ?? '',
+          },
         })
 
         await supabase
           .from('receipts')
-          .update({ paymob_order_id: String(payment.orderId) })
+          .update({ paymob_order_id: String(payment.paymobOrderId) })
           .eq('id', receipt.id)
 
         return {
           receiptId: receipt.id,
           orderNumber,
           paymentRequired: true,
-          paymobIframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${payment.iframeId}?payment_token=${payment.paymentKey}`,
+          paymobIframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${env.PAYMOB_IFRAME_ID}?payment_token=${payment.paymentKey}`,
         }
       } catch (err: any) {
         fastify.log.error({ err }, 'Paymob initiation failed')
@@ -381,6 +396,135 @@ export default async function customerOrdersRoutes(fastify: FastifyInstance) {
       receipt_id: id,
       rating: body.rating,
       comment: body.comment ?? null,
+    })
+
+    return { success: true }
+  })
+
+  // ── Compiled-storefront aliases ──────────────────────────────────────────────
+
+  // GET /receipt/previous-orders?restaurantId=X  — alias of /receipt/list
+  fastify.get('/receipt/previous-orders', { preHandler: requireCustomer }, async (request) => {
+    const customerId = request.customer!.customer_id
+    const restaurantId = request.customer!.restaurant_id
+    const q = z.object({
+      restaurantId: z.coerce.number().int().optional(),
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(1).max(50).default(10),
+    }).parse(request.query)
+
+    if (q.restaurantId && q.restaurantId !== restaurantId) {
+      throw new ForbiddenError('Restaurant does not match customer tenant')
+    }
+
+    const from = (q.page - 1) * q.pageSize
+    const to = from + q.pageSize - 1
+
+    const { data, count } = await supabase
+      .from('receipts')
+      .select('id, order_number, state, order_type, total, created_at, franchise_id', { count: 'exact' })
+      .eq('customer_id', customerId)
+      .eq('restaurant_id', restaurantId)
+      .order('created_at', { ascending: false })
+      .range(from, to)
+
+    return { orders: data ?? [], total: count ?? 0, page: q.page, pageSize: q.pageSize }
+  })
+
+  // GET /receipt/latest-receipt/:id  — alias of GET /receipt/:id
+  fastify.get('/receipt/latest-receipt/:id', { preHandler: requireCustomer }, async (request) => {
+    const customerId = request.customer!.customer_id
+    const restaurantId = request.customer!.restaurant_id
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+
+    const { data: receipt } = await supabase
+      .from('receipts')
+      .select('*, receipt_items(*)')
+      .eq('id', id)
+      .single()
+
+    if (!receipt) throw new NotFoundError('Order not found')
+    if (receipt.customer_id !== customerId || receipt.restaurant_id !== restaurantId) {
+      throw new ForbiddenError()
+    }
+
+    return { receipt }
+  })
+
+  // GET /receipt/updated-receipt-state?receiptId=X&restaurantId=Y
+  // — alias of GET /receipt/:id/track using query params instead of path params
+  fastify.get('/receipt/updated-receipt-state', { preHandler: optionalCustomer }, async (request) => {
+    const q = z.object({
+      receiptId: z.string().uuid(),
+      restaurantId: z.coerce.number().int().optional(),
+    }).parse(request.query)
+
+    const { data: receipt } = await supabase
+      .from('receipts')
+      .select('id, order_number, state, order_type, estimated_minutes, franchise_id, restaurant_id, customer_id, created_at, updated_at')
+      .eq('id', q.receiptId)
+      .single()
+
+    if (!receipt) throw new NotFoundError('Order not found')
+
+    const customerId = request.customer?.customer_id
+    const reqRestaurantId = request.restaurantId
+    const ownsByCustomer = customerId && receipt.customer_id === customerId
+    const ownsByTenant = reqRestaurantId && receipt.restaurant_id === reqRestaurantId
+    if (!ownsByCustomer && !ownsByTenant) throw new ForbiddenError()
+
+    if (q.restaurantId && q.restaurantId !== receipt.restaurant_id) {
+      throw new ForbiddenError('Restaurant does not match receipt tenant')
+    }
+
+    return {
+      receiptId: receipt.id,
+      orderNumber: receipt.order_number,
+      state: receipt.state,
+      orderType: receipt.order_type,
+      estimatedMinutes: receipt.estimated_minutes,
+      updatedAt: receipt.updated_at,
+    }
+  })
+
+  // POST /feedback  — storefront path for `/receipt/:id/feedback`
+  // Body: {numberOfStars, feedback, receiptId, feedbackTags?, feedbackTagsText?}
+  // feedbackTags (+ feedbackTagsText) are folded into `comment` as a prefix since
+  // the current schema has no tags column.
+  fastify.post('/feedback', { preHandler: requireCustomer }, async (request) => {
+    const customerId = request.customer!.customer_id
+    const restaurantId = request.customer!.restaurant_id
+    const body = z.object({
+      numberOfStars: z.number().int().min(1).max(5),
+      feedback: z.string().optional(),
+      receiptId: z.string().uuid(),
+      feedbackTags: z.array(z.string()).optional(),
+      feedbackTagsText: z.string().optional(),
+    }).parse(request.body)
+
+    const { data: receipt } = await supabase
+      .from('receipts')
+      .select('id, franchise_id, state')
+      .eq('id', body.receiptId)
+      .eq('customer_id', customerId)
+      .single()
+
+    if (!receipt) throw new NotFoundError('Order not found')
+
+    const tagPrefix = [
+      body.feedbackTags?.length ? `[tags: ${body.feedbackTags.join(', ')}]` : null,
+      body.feedbackTagsText ? `[${body.feedbackTagsText}]` : null,
+    ].filter(Boolean).join(' ')
+
+    const comment = [tagPrefix, body.feedback].filter(Boolean).join(' ').trim() || null
+
+    await supabase.from('feedback').insert({
+      restaurant_id: restaurantId,
+      franchise_id: receipt.franchise_id,
+      customer_id: customerId,
+      receipt_id: body.receiptId,
+      rating: body.numberOfStars,
+      comment,
     })
 
     return { success: true }
