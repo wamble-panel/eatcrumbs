@@ -3,9 +3,7 @@ import { z } from 'zod'
 import { supabase } from '../../config/supabase'
 import { requireAdmin } from '../../middleware/auth'
 import { uploadItemImage } from '../../services/storage'
-import { NotFoundError, ForbiddenError } from '../../lib/errors'
-import pump from 'pump'
-import { Readable } from 'stream'
+import { ForbiddenError } from '../../lib/errors'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

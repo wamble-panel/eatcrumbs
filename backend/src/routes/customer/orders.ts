@@ -7,6 +7,7 @@ import { getPointingSystem, calculatePointsEarned, calculateRedeemDiscount, awar
 import { initiatePayment } from '../../services/paymob'
 import { notifyOrderPlaced } from '../../services/whatsapp'
 import { OrderType, PaymentMethod, ReceiptState } from '../../types'
+import { env } from '../../config/env'
 
 // ── Schema for a single cart item ─────────────────────────────────────────────
 const cartItemSchema = z.object({
@@ -240,30 +241,44 @@ export default async function customerOrdersRoutes(fastify: FastifyInstance) {
 
     // WhatsApp notification (fire and forget)
     if (customerId && request.customer?.phone_number) {
-      notifyOrderPlaced(request.customer.phone_number, orderNumber).catch(() => {})
+      notifyOrderPlaced({
+        to: request.customer.phone_number,
+        orderId: String(orderNumber),
+        restaurantName: '',
+        items: '',
+        total: String(total),
+        currency: env.PAYMOB_CURRENCY,
+        templateName: 'order_placed',
+      }).catch(() => {})
     }
 
     // If online payment, initiate Paymob
-    if (body.paymentMethod === PaymentMethod.ONLINE_CARD || body.paymentMethod === PaymentMethod.ONLINE) {
+    if (body.paymentMethod === PaymentMethod.ONLINE_CARD) {
       try {
+        const [firstName, ...rest] = (request.customer?.person_name ?? 'Customer').split(' ')
         const payment = await initiatePayment({
           amountCents: Math.round(total * 100),
-          orderId: receipt.id,
-          customerPhone: request.customer?.phone_number ?? '',
-          customerName: request.customer?.person_name ?? 'Customer',
-          customerEmail: '',
+          currency: env.PAYMOB_CURRENCY,
+          receiptId: receipt.id,
+          integrationId: Number(env.PAYMOB_INTEGRATION_ID) || 0,
+          billingData: {
+            first_name: firstName || 'Customer',
+            last_name: rest.join(' ') || 'Guest',
+            email: 'noreply@prepit.app',
+            phone_number: request.customer?.phone_number ?? '',
+          },
         })
 
         await supabase
           .from('receipts')
-          .update({ paymob_order_id: String(payment.orderId) })
+          .update({ paymob_order_id: String(payment.paymobOrderId) })
           .eq('id', receipt.id)
 
         return {
           receiptId: receipt.id,
           orderNumber,
           paymentRequired: true,
-          paymobIframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${payment.iframeId}?payment_token=${payment.paymentKey}`,
+          paymobIframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${env.PAYMOB_IFRAME_ID}?payment_token=${payment.paymentKey}`,
         }
       } catch (err: any) {
         fastify.log.error({ err }, 'Paymob initiation failed')

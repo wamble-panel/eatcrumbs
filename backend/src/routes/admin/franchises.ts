@@ -269,7 +269,7 @@ export default async function adminFranchisesRoutes(fastify: FastifyInstance) {
       logoUrl: z.string().url().optional(),
       preferredCountry: z.string().length(2).optional(),
       mainFranchiseId: z.number().int().optional(),
-      config: z.record(z.unknown()).optional(),
+      config: z.record(z.string(), z.unknown()).optional(),
     }).parse(request.body)
 
     const updates: Record<string, any> = { updated_at: new Date().toISOString() }

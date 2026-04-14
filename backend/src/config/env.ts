@@ -15,6 +15,8 @@ const schema = z.object({
   PAYMOB_API_KEY: z.string().optional().default(''),
   PAYMOB_HMAC_SECRET: z.string().optional().default(''),
   PAYMOB_INTEGRATION_ID: z.string().optional().default(''),
+  PAYMOB_IFRAME_ID: z.string().optional().default(''),
+  PAYMOB_CURRENCY: z.string().default('EGP'),
 
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_FROM: z.string().default('noreply@prepit.app'),

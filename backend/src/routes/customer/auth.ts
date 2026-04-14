@@ -53,7 +53,7 @@ export default async function customerAuthRoutes(fastify: FastifyInstance) {
       const code = generateOtp()
       storeOtp(otpKey(body.phoneNumber, body.restaurantId), code)
 
-      await sendWhatsappOtp(body.phoneNumber, code).catch((err) => {
+      await sendWhatsappOtp({ to: body.phoneNumber, code }).catch((err) => {
         // Log but don't fail — customer can still use code if WhatsApp is down
         fastify.log.warn({ err }, 'WhatsApp OTP send failed')
       })
@@ -112,11 +112,15 @@ export default async function customerAuthRoutes(fastify: FastifyInstance) {
 
       // Award referral points if applicable
       if (referredBy) {
-        await supabase.from('referrals').insert({
-          referrer_id: referredBy,
-          referred_id: customer.id,
-          restaurant_id: body.restaurantId,
-        }).catch(() => {}) // ignore duplicate errors
+        try {
+          await supabase.from('referrals').insert({
+            referrer_id: referredBy,
+            referred_id: customer.id,
+            restaurant_id: body.restaurantId,
+          })
+        } catch {
+          // ignore duplicate errors
+        }
       }
     } else if (body.personName && !customer.person_name) {
       await supabase

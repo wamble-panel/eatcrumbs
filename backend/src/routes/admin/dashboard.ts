@@ -18,14 +18,14 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
   fastify.get('/dashboard/overview', { preHandler: requireAdmin }, async (request, reply) => {
     const restaurantId = request.admin!.restaurant_id
     const query = rangeQuery.parse(request.query)
-    const { start, end } = resolveDateRange(query.timeInterval, query.startDate, query.endDate)
+    const { startDate: start, endDate: end } = resolveDateRange(query.timeInterval, query.startDate, query.endDate)
 
     let receiptsQuery = supabase
       .from('receipts')
       .select('id, total, state, order_type, created_at, franchise_id')
       .eq('restaurant_id', restaurantId)
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString())
+      .gte('created_at', start)
+      .lte('created_at', end)
 
     if (query.franchiseId) {
       receiptsQuery = receiptsQuery.eq('franchise_id', query.franchiseId)
@@ -61,8 +61,8 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
       .from('customers')
       .select('id', { count: 'exact', head: true })
       .eq('restaurant_id', restaurantId)
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString())
+      .gte('created_at', start)
+      .lte('created_at', end)
 
     return {
       totalRevenue: Math.round(totalRevenue * 100) / 100,
@@ -80,15 +80,15 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
   fastify.get('/dashboard/item-sales', { preHandler: requireAdmin }, async (request) => {
     const restaurantId = request.admin!.restaurant_id
     const query = rangeQuery.parse(request.query)
-    const { start, end } = resolveDateRange(query.timeInterval, query.startDate, query.endDate)
+    const { startDate: start, endDate: end } = resolveDateRange(query.timeInterval, query.startDate, query.endDate)
 
     let rcptQuery = supabase
       .from('receipts')
       .select('id, franchise_id')
       .eq('restaurant_id', restaurantId)
       .eq('state', 'DELIVERED')
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString())
+      .gte('created_at', start)
+      .lte('created_at', end)
 
     if (query.franchiseId) rcptQuery = rcptQuery.eq('franchise_id', query.franchiseId)
 
@@ -123,14 +123,14 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
   fastify.get('/dashboard/feedback-analytics', { preHandler: requireAdmin }, async (request) => {
     const restaurantId = request.admin!.restaurant_id
     const query = rangeQuery.parse(request.query)
-    const { start, end } = resolveDateRange(query.timeInterval, query.startDate, query.endDate)
+    const { startDate: start, endDate: end } = resolveDateRange(query.timeInterval, query.startDate, query.endDate)
 
     let fbQuery = supabase
       .from('feedback')
       .select('id, rating, franchise_id, created_at')
       .eq('restaurant_id', restaurantId)
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString())
+      .gte('created_at', start)
+      .lte('created_at', end)
 
     if (query.franchiseId) fbQuery = fbQuery.eq('franchise_id', query.franchiseId)
 
@@ -152,7 +152,7 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
   fastify.get('/dashboard/customers-analytics', { preHandler: requireAdmin }, async (request) => {
     const restaurantId = request.admin!.restaurant_id
     const query = rangeQuery.parse(request.query)
-    const { start, end } = resolveDateRange(query.timeInterval, query.startDate, query.endDate)
+    const { startDate: start, endDate: end } = resolveDateRange(query.timeInterval, query.startDate, query.endDate)
 
     const { count: total } = await supabase
       .from('customers')
@@ -163,8 +163,8 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
       .from('customers')
       .select('id', { count: 'exact', head: true })
       .eq('restaurant_id', restaurantId)
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString())
+      .gte('created_at', start)
+      .lte('created_at', end)
 
     // Repeat customers: placed > 1 order
     const { data: multiOrder } = await supabase
@@ -200,7 +200,7 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
       pageSize: z.coerce.number().int().min(1).max(100).default(20),
     }).parse(request.query)
 
-    const { start, end } = resolveDateRange(q.timeInterval, q.startDate, q.endDate)
+    const { startDate: start, endDate: end } = resolveDateRange(q.timeInterval, q.startDate, q.endDate)
     const from = (q.page - 1) * q.pageSize
     const to = from + q.pageSize - 1
 
@@ -211,8 +211,8 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
         { count: 'exact' },
       )
       .eq('restaurant_id', restaurantId)
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString())
+      .gte('created_at', start)
+      .lte('created_at', end)
       .order('created_at', { ascending: false })
       .range(from, to)
 

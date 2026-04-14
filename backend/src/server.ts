@@ -2,9 +2,9 @@ import Fastify from 'fastify'
 import fastifyCookie from '@fastify/cookie'
 import fastifyMultipart from '@fastify/multipart'
 import { env } from './config/env'
-import { registerCors } from './plugins/cors'
-import { registerRateLimit } from './plugins/rateLimit'
-import { registerSocket } from './plugins/socket'
+import corsPlugin from './plugins/cors'
+import rateLimitPlugin from './plugins/rateLimit'
+import socketPlugin from './plugins/socket'
 import { resolveTenant } from './middleware/tenant'
 
 // Admin routes
@@ -41,24 +41,24 @@ async function build() {
   })
 
   // ── Plugins ────────────────────────────────────────────────────────────────
-  await registerCors(fastify)
-  await registerRateLimit(fastify)
+  await fastify.register(corsPlugin)
+  await fastify.register(rateLimitPlugin)
 
   await fastify.register(fastifyCookie)
   await fastify.register(fastifyMultipart, {
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB global limit
   })
 
-  registerSocket(fastify)
+  await fastify.register(socketPlugin)
 
   // ── Global error handler ───────────────────────────────────────────────────
-  fastify.setErrorHandler((error, _request, reply) => {
+  fastify.setErrorHandler((error: any, _request, reply) => {
     // Zod validation errors
     if (error.name === 'ZodError') {
-      return reply.status(400).send({ error: 'Validation error', details: (error as any).errors })
+      return reply.status(400).send({ error: 'Validation error', details: error.errors })
     }
     // Our custom AppErrors
-    const status = (error as any).statusCode ?? 500
+    const status = error.statusCode ?? 500
     if (status < 500) {
       return reply.status(status).send({ error: error.message })
     }

@@ -287,7 +287,7 @@ create table if not exists receipts (
   order_number      int not null,                -- sequential per franchise per day
   state             receipt_state not null default 'PENDING',
   order_type        order_type not null,
-  payment_method    payment_method not null default 'CASH',
+  payment_method    payment_method not null default 'cash',
   subtotal          numeric(10,2) not null,
   delivery_fee      numeric(10,2) not null default 0,
   discount          numeric(10,2) not null default 0,
