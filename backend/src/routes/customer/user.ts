@@ -205,11 +205,27 @@ export default async function customerUserRoutes(fastify: FastifyInstance) {
 
     const { data: restaurant } = await supabase
       .from('restaurants')
-      .select('id, config, menu_version, preferred_country, is_foodics')
+      .select('id, name, name_arabic, logo_url, config, menu_version, preferred_country, is_foodics')
       .eq('id', restaurantId)
       .single()
 
     if (!restaurant) return { config: {} }
+
+    // Resolve franchiseId from slug header so the storefront knows which branch it's on
+    const slug =
+      (request.headers['x-franchise-slug'] as string) ||
+      (request.headers['x-restaurant-slug'] as string) ||
+      null
+    let franchiseId: number | null = null
+    if (slug) {
+      const { data: franchise } = await supabase
+        .from('franchises')
+        .select('id')
+        .eq('slug', slug)
+        .eq('restaurant_id', restaurantId)
+        .single()
+      franchiseId = franchise?.id ?? null
+    }
 
     return {
       config: {
@@ -217,6 +233,11 @@ export default async function customerUserRoutes(fastify: FastifyInstance) {
         menuVersion: restaurant.menu_version,
         preferredCountry: restaurant.preferred_country,
         isFoodicsRestaurant: restaurant.is_foodics,
+        restaurantId: restaurant.id,
+        franchiseId,
+        name: restaurant.name,
+        nameArabic: restaurant.name_arabic,
+        logoUrl: restaurant.logo_url,
       },
     }
   })
