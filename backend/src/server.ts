@@ -29,7 +29,7 @@ import customerUserRoutes from './routes/customer/user'
 // Webhook routes
 import paymobWebhookRoutes from './routes/webhooks/paymob'
 
-async function build() {
+export async function build() {
   const fastify = Fastify({
     logger: {
       level: env.NODE_ENV === 'production' ? 'warn' : 'info',
@@ -115,4 +115,8 @@ async function start() {
   }
 }
 
-start()
+// Only bind to a port when running directly (not inside a Vercel serverless
+// function). Vercel sets VERCEL=1 in every deployment environment.
+if (!process.env.VERCEL) {
+  start()
+}
