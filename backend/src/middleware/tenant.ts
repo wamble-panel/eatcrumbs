@@ -1,8 +1,9 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { supabase } from '../config/supabase'
 
-// In-memory slug cache (TTL 5 min) — replace with Redis in production
+// In-memory caches (TTL 5 min) — replace with Redis in production
 const slugCache = new Map<string, { id: number; expiresAt: number }>()
+const domainCache = new Map<string, { id: number; expiresAt: number }>()
 const CACHE_TTL = 5 * 60 * 1000
 
 async function resolveSlug(slug: string): Promise<number | null> {
@@ -15,42 +16,51 @@ async function resolveSlug(slug: string): Promise<number | null> {
     .eq('slug', slug)
     .single()
 
-  if (!data) {
-    // try resolving as a direct restaurant slug
-    const { data: r } = await supabase
-      .from('restaurants')
-      .select('id')
-      .eq('slug', slug)
-      .single()
-    if (!r) return null
-    slugCache.set(slug, { id: r.id, expiresAt: Date.now() + CACHE_TTL })
-    return r.id
-  }
+  if (!data) return null
 
   slugCache.set(slug, { id: data.restaurant_id, expiresAt: Date.now() + CACHE_TTL })
   return data.restaurant_id
 }
 
-function extractSlugFromOrigin(origin?: string): string | null {
+async function resolveCustomDomain(host: string): Promise<number | null> {
+  const cached = domainCache.get(host)
+  if (cached && Date.now() < cached.expiresAt) return cached.id
+
+  const { data } = await supabase
+    .from('custom_domains')
+    .select('restaurant_id')
+    .eq('domain', host)
+    .eq('is_verified', true)
+    .single()
+
+  if (!data) return null
+
+  domainCache.set(host, { id: data.restaurant_id, expiresAt: Date.now() + CACHE_TTL })
+  return data.restaurant_id
+}
+
+function extractHostFromOrigin(origin?: string): string | null {
   if (!origin) return null
   try {
-    const url = new URL(origin)
-    const host = url.hostname // e.g. "mybrand.prepit.app" or "mybrand.customdomain.com"
-    if (host.endsWith('.prepit.app')) {
-      const parts = host.split('.')
-      const slug = parts[0]
-      if (slug && slug !== 'admin' && slug !== 'api' && slug !== 'www') return slug
-    }
-    return null
+    return new URL(origin).hostname
   } catch {
     return null
   }
 }
 
-/** Sets req.restaurantId from:
- *  1. x-restaurant-slug header
- *  2. Origin subdomain
- *  3. Falls back to no-op (route handlers guard with explicit restaurantId)
+function extractSubdomainSlug(host: string): string | null {
+  if (!host.endsWith('.prepit.app')) return null
+  const parts = host.split('.')
+  const slug = parts[0]
+  if (!slug || slug === 'admin' || slug === 'api' || slug === 'www') return null
+  return slug
+}
+
+/** Sets req.restaurantId from (in priority order):
+ *  1. x-restaurant-slug / x-franchise-slug header
+ *  2. Origin `*.prepit.app` subdomain
+ *  3. Origin matched against a verified custom_domains row
+ *  4. Falls back to 0 — route handlers guard with explicit restaurantId.
  */
 export async function resolveTenant(req: FastifyRequest, _reply: FastifyReply) {
   // Header takes priority (used by admin dashboard and explicit API calls)
@@ -64,11 +74,21 @@ export async function resolveTenant(req: FastifyRequest, _reply: FastifyReply) {
     }
   }
 
-  // Try to resolve from Origin subdomain
   const origin = req.headers.origin || req.headers.referer
-  const slug = extractSlugFromOrigin(origin)
-  if (slug) {
-    const id = await resolveSlug(slug)
+  const host = extractHostFromOrigin(origin)
+  if (host) {
+    // Try the *.prepit.app subdomain pattern first
+    const slug = extractSubdomainSlug(host)
+    if (slug) {
+      const id = await resolveSlug(slug)
+      if (id) {
+        req.restaurantId = id
+        return
+      }
+    }
+
+    // Fall back to a verified custom domain (e.g. "order.brand.com")
+    const id = await resolveCustomDomain(host)
     if (id) {
       req.restaurantId = id
       return
