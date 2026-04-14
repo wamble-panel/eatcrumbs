@@ -184,23 +184,46 @@ export default async function customerMenuRoutes(fastify: FastifyInstance) {
     }
   })
 
-  // GET /items/status  — check if specific items are available
+  // GET /items/status  — check item availability
+  //
+  // Accepts two contracts:
+  //   1. Canonical: `?ids=1,2,3` — returns statuses for just those IDs
+  //   2. Storefront: `?restaurantId=X[&franchiseSlug=Y]` — returns statuses for
+  //      every item in the restaurant (franchiseSlug is currently ignored; per-
+  //      branch availability is not yet modelled in the schema)
   fastify.get('/items/status', async (request) => {
     const q = z.object({
-      ids: z.string(),  // comma-separated item IDs
+      ids: z.string().optional(),
+      restaurantId: z.coerce.number().int().optional(),
+      franchiseSlug: z.string().optional(),
     }).parse(request.query)
 
-    const ids = q.ids.split(',').map(Number).filter((n) => !isNaN(n))
-    if (ids.length === 0) return { statuses: [] }
+    if (q.ids) {
+      const ids = q.ids.split(',').map(Number).filter((n) => !isNaN(n))
+      if (ids.length === 0) return { statuses: [] }
 
-    const { data: items } = await supabase
-      .from('items')
-      .select('id, is_active')
-      .in('id', ids)
+      const { data: items } = await supabase
+        .from('items')
+        .select('id, is_active')
+        .in('id', ids)
 
-    return {
-      statuses: (items ?? []).map((i) => ({ id: i.id, isActive: i.is_active })),
+      return {
+        statuses: (items ?? []).map((i) => ({ id: i.id, isActive: i.is_active })),
+      }
     }
+
+    if (q.restaurantId) {
+      const { data: items } = await supabase
+        .from('items')
+        .select('id, is_active')
+        .eq('restaurant_id', q.restaurantId)
+
+      return {
+        statuses: (items ?? []).map((i) => ({ id: i.id, isActive: i.is_active })),
+      }
+    }
+
+    return { statuses: [] }
   })
 
   // GET /items/top-products/:restaurantId
@@ -232,4 +255,45 @@ export default async function customerMenuRoutes(fastify: FastifyInstance) {
 
     return { offers: offers ?? [] }
   })
+
+  // ── Compiled-storefront aliases ──────────────────────────────────────────────
+
+  // GET /franchise/is-open?franchiseId=X
+  // Storefront passes `franchiseId` as a query param; the canonical admin
+  // route uses a path param and is mounted under /admin/v2. Expose a public
+  // customer-level version here.
+  fastify.get('/franchise/is-open', async (request, reply) => {
+    const q = z.object({
+      franchiseId: z.coerce.number().int(),
+    }).parse(request.query)
+
+    const { data: franchise } = await supabase
+      .from('franchises')
+      .select('id, is_online, busy_mode')
+      .eq('id', q.franchiseId)
+      .single()
+
+    if (!franchise) return reply.status(404).send({ error: 'Franchise not found' })
+    if (!franchise.is_online) return { isOpen: false, busyMode: false, reason: 'offline' }
+
+    const now = new Date()
+    const dayOfWeek = now.getDay()
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
+    const { data: slots } = await supabase
+      .from('schedule_slots')
+      .select('open_time, close_time')
+      .eq('franchise_id', q.franchiseId)
+      .eq('day_of_week', dayOfWeek)
+
+    const isOpen = !slots || slots.length === 0 ||
+      slots.some((s) => currentTime >= s.open_time && currentTime <= s.close_time)
+
+    return {
+      isOpen,
+      busyMode: franchise.busy_mode,
+      reason: isOpen ? null : 'closed',
+    }
+  })
+
 }
