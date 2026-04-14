@@ -331,6 +331,42 @@ export default async function adminFranchisesRoutes(fastify: FastifyInstance) {
     return { success: true, state: body.state }
   })
 
+  // GET /restaurant/orders — live orders board list
+  fastify.get('/restaurant/orders', { preHandler: requireAdmin }, async (request) => {
+    const restaurantId = request.admin!.restaurant_id
+    const q = z.object({
+      states: z.string().optional(),
+      franchiseId: z.coerce.number().int().optional(),
+      date: z.string().optional(),   // YYYY-MM-DD; defaults to today
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(1).max(100).default(50),
+    }).parse(request.query)
+
+    const ACTIVE = [
+      ReceiptState.PENDING, ReceiptState.ACCEPTED, ReceiptState.READY,
+      ReceiptState.ON_WAY_TO_DELIVERY, ReceiptState.ON_WAY_TO_PICKUP,
+    ]
+    const states = q.states ? q.states.split(',').map((s) => s.trim()) : ACTIVE
+    const date = q.date ?? new Date().toISOString().slice(0, 10)
+    const from = (q.page - 1) * q.pageSize
+    const to = from + q.pageSize - 1
+
+    let query = supabase
+      .from('receipts')
+      .select('*, receipt_items(*)', { count: 'exact' })
+      .eq('restaurant_id', restaurantId)
+      .in('state', states)
+      .gte('created_at', `${date}T00:00:00.000Z`)
+      .lte('created_at', `${date}T23:59:59.999Z`)
+      .order('created_at', { ascending: false })
+      .range(from, to)
+
+    if (q.franchiseId) query = query.eq('franchise_id', q.franchiseId)
+
+    const { data: orders, count } = await query
+    return { orders: orders ?? [], total: count ?? 0 }
+  })
+
   // GET /restaurant/orders/:orderId — full order detail
   fastify.get('/restaurant/orders/:orderId', { preHandler: requireAdmin }, async (request, reply) => {
     const restaurantId = request.admin!.restaurant_id
