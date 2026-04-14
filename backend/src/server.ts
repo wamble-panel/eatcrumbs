@@ -4,7 +4,6 @@ import fastifyMultipart from '@fastify/multipart'
 import { env } from './config/env'
 import corsPlugin from './plugins/cors'
 import rateLimitPlugin from './plugins/rateLimit'
-import socketPlugin from './plugins/socket'
 import { resolveTenant } from './middleware/tenant'
 
 // Admin routes
@@ -48,8 +47,6 @@ export async function build() {
   await fastify.register(fastifyMultipart, {
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB global limit
   })
-
-  await fastify.register(socketPlugin)
 
   // ── Global error handler ───────────────────────────────────────────────────
   fastify.setErrorHandler((error: any, _request, reply) => {

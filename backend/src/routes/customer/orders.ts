@@ -225,19 +225,8 @@ export default async function customerOrdersRoutes(fastify: FastifyInstance) {
         .eq('id', promoCodeRecord.id)
     }
 
-    // Emit Socket.IO events to franchise and admin dashboards
-    const io = (fastify as any).io
-    if (io) {
-      const orderPayload = {
-        receiptId: receipt.id,
-        orderNumber,
-        franchiseId: body.franchiseId,
-        orderType: body.orderType,
-        total: Math.round(total * 100) / 100,
-      }
-      io.of('/socket/franchise').to(`franchise:${body.franchiseId}`).emit('new_order', orderPayload)
-      io.of('/socket/admin').to(`admin:${body.restaurantId}`).emit('new_order', orderPayload)
-    }
+    // Supabase Realtime automatically broadcasts the new receipts row to
+    // franchise and admin subscribers — no additional emit needed here.
 
     // WhatsApp notification (fire and forget)
     if (customerId && request.customer?.phone_number) {

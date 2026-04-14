@@ -1,0 +1,63 @@
+-- =============================================================================
+-- Enable Supabase Realtime on the receipts table
+-- =============================================================================
+-- Now that Socket.IO has been removed from the backend, order state changes
+-- and new orders are broadcast to clients via Supabase Realtime (Postgres
+-- logical replication → Supabase Realtime → supabase-js client).
+--
+-- Run this once in your Supabase project SQL editor, or add it to your
+-- migration runner.  It is idempotent.
+-- =============================================================================
+
+alter publication supabase_realtime add table receipts;
+
+-- =============================================================================
+-- Frontend client subscription examples (TypeScript / supabase-js v2)
+-- =============================================================================
+--
+-- Customer order tracking (replaces /socket/restaurant `order_state_changed`):
+--
+--   supabase
+--     .channel('order-' + receiptId)
+--     .on('postgres_changes', {
+--       event: 'UPDATE',
+--       schema: 'public',
+--       table: 'receipts',
+--       filter: `id=eq.${receiptId}`,
+--     }, (payload) => {
+--       const { state, estimated_minutes, is_paid } = payload.new
+--       // update UI
+--     })
+--     .subscribe()
+--
+-- Franchise dashboard – new orders (replaces /socket/franchise `new_order`):
+--
+--   supabase
+--     .channel('franchise-orders-' + franchiseId)
+--     .on('postgres_changes', {
+--       event: 'INSERT',
+--       schema: 'public',
+--       table: 'receipts',
+--       filter: `franchise_id=eq.${franchiseId}`,
+--     }, (payload) => {
+--       const { id, order_number, order_type, total } = payload.new
+--       // show new order notification
+--     })
+--     .subscribe()
+--
+-- Admin dashboard – all order events (replaces /socket/admin `new_order` +
+--                                      `order_state_changed`):
+--
+--   supabase
+--     .channel('admin-orders-' + restaurantId)
+--     .on('postgres_changes', {
+--       event: '*',
+--       schema: 'public',
+--       table: 'receipts',
+--       filter: `restaurant_id=eq.${restaurantId}`,
+--     }, (payload) => {
+--       if (payload.eventType === 'INSERT') { /* new order */ }
+--       if (payload.eventType === 'UPDATE') { /* state changed */ }
+--     })
+--     .subscribe()
+-- =============================================================================
