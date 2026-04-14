@@ -39,8 +39,12 @@ export async function requireCustomer(req: FastifyRequest, reply: FastifyReply) 
   try {
     const payload = verifyToken(token)
     if (!isCustomerPayload(payload)) throw new UnauthorizedError()
+    // Enforce tenant: if a subdomain resolved a restaurantId, it must match the token
+    if (req.restaurantId && req.restaurantId !== payload.restaurant_id) {
+      throw new ForbiddenError()
+    }
     req.customer = payload
-    if (!req.restaurantId) req.restaurantId = payload.restaurant_id
+    req.restaurantId = payload.restaurant_id
   } catch (err: any) {
     if (err instanceof ForbiddenError) throw err
     throw new UnauthorizedError()
@@ -53,10 +57,15 @@ export async function optionalCustomer(req: FastifyRequest, _reply: FastifyReply
   try {
     const payload = verifyToken(token)
     if (isCustomerPayload(payload)) {
+      // Same tenant check as requireCustomer — reject mismatched tenants even when auth is optional
+      if (req.restaurantId && req.restaurantId !== payload.restaurant_id) {
+        throw new ForbiddenError()
+      }
       req.customer = payload
-      if (!req.restaurantId) req.restaurantId = payload.restaurant_id
+      req.restaurantId = payload.restaurant_id
     }
-  } catch {
-    // ignore — optional auth
+  } catch (err: any) {
+    if (err instanceof ForbiddenError) throw err
+    // ignore other errors — optional auth
   }
 }

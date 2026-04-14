@@ -4,8 +4,19 @@ import { supabase } from '../../config/supabase'
 import { signCustomerToken } from '../../lib/jwt'
 import { generateOtp, storeOtp, verifyOtp, otpKey } from '../../lib/otp'
 import { sendOtp as sendWhatsappOtp } from '../../services/whatsapp'
-import { NotFoundError, AppError } from '../../lib/errors'
+import { NotFoundError, AppError, ForbiddenError } from '../../lib/errors'
 import { requireCustomer } from '../../middleware/auth'
+
+/**
+ * If the subdomain resolved a tenant (`req.restaurantId`), the body's
+ * `restaurantId` must match. Prevents a page on brand A from signing up
+ * / logging in customers into brand B by forging the body.
+ */
+function assertBodyMatchesTenant(req: any, bodyRestaurantId: number) {
+  if (req.restaurantId && req.restaurantId !== bodyRestaurantId) {
+    throw new ForbiddenError('Restaurant does not match storefront tenant')
+  }
+}
 import { ORGANICATION_CUSTOMER_VERIFIED } from '../../types'
 
 const sendOtpBody = z.object({
@@ -28,6 +39,7 @@ export default async function customerAuthRoutes(fastify: FastifyInstance) {
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const body = sendOtpBody.parse(request.body)
+      assertBodyMatchesTenant(request, body.restaurantId)
 
       // Verify restaurant exists
       const { data: restaurant } = await supabase
@@ -53,6 +65,7 @@ export default async function customerAuthRoutes(fastify: FastifyInstance) {
   // POST /customer/verify-otp
   fastify.post('/customer/verify-otp', async (request, reply) => {
     const body = verifyOtpBody.parse(request.body)
+    assertBodyMatchesTenant(request, body.restaurantId)
 
     const valid = verifyOtp(otpKey(body.phoneNumber, body.restaurantId), body.otp)
     if (!valid) throw new AppError(400, 'Invalid or expired OTP')
@@ -147,6 +160,7 @@ export default async function customerAuthRoutes(fastify: FastifyInstance) {
     const body = z.object({
       restaurantId: z.number().int().positive(),
     }).parse(request.body)
+    assertBodyMatchesTenant(request, body.restaurantId)
 
     const { data: restaurant } = await supabase
       .from('restaurants')

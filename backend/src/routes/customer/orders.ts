@@ -45,6 +45,15 @@ export default async function customerOrdersRoutes(fastify: FastifyInstance) {
     const body = confirmReceiptBody.parse(request.body)
     const customerId = request.customer?.customer_id ?? null
 
+    // If the storefront subdomain resolved a tenant, body.restaurantId must match
+    if (request.restaurantId && request.restaurantId !== body.restaurantId) {
+      throw new ForbiddenError('Restaurant does not match storefront tenant')
+    }
+    // If the customer is logged in, their JWT tenant must match too (defence in depth)
+    if (request.customer && request.customer.restaurant_id !== body.restaurantId) {
+      throw new ForbiddenError('Restaurant does not match customer tenant')
+    }
+
     // Verify franchise belongs to restaurant and is online
     const { data: franchise } = await supabase
       .from('franchises')
@@ -285,8 +294,8 @@ export default async function customerOrdersRoutes(fastify: FastifyInstance) {
 
     if (!receipt) throw new NotFoundError('Order not found')
 
-    // Customers can only see their own orders or orders from same restaurant
-    if (receipt.customer_id !== customerId && receipt.restaurant_id !== restaurantId) {
+    // Must be the customer's own order AND belong to their restaurant tenant
+    if (receipt.customer_id !== customerId || receipt.restaurant_id !== restaurantId) {
       throw new ForbiddenError()
     }
 
@@ -322,11 +331,19 @@ export default async function customerOrdersRoutes(fastify: FastifyInstance) {
 
     const { data: receipt } = await supabase
       .from('receipts')
-      .select('id, order_number, state, order_type, estimated_minutes, franchise_id, restaurant_id, created_at, updated_at')
+      .select('id, order_number, state, order_type, estimated_minutes, franchise_id, restaurant_id, customer_id, created_at, updated_at')
       .eq('id', id)
       .single()
 
     if (!receipt) throw new NotFoundError('Order not found')
+
+    // Authorisation: must be the receipt's customer, or at minimum the request
+    // must come from the tenant that owns the order.
+    const customerId = request.customer?.customer_id
+    const reqRestaurantId = request.restaurantId
+    const ownsByCustomer = customerId && receipt.customer_id === customerId
+    const ownsByTenant = reqRestaurantId && receipt.restaurant_id === reqRestaurantId
+    if (!ownsByCustomer && !ownsByTenant) throw new ForbiddenError()
 
     return {
       receiptId: receipt.id,
