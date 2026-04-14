@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { supabase } from '../../config/supabase'
 import { requireAdmin } from '../../middleware/auth'
 import { resolveDateRange } from '../../lib/dates'
-import { TimeInterval } from '../../types'
+import { TimeInterval, ReportType } from '../../types'
 
 // ── Shared query-string schema ────────────────────────────────────────────────
 const rangeQuery = z.object({
@@ -226,6 +226,194 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
       total: count ?? 0,
       page: q.page,
       pageSize: q.pageSize,
+    }
+  })
+
+  // ── POST /dashboard/report ──────────────────────────────────────────────────
+  // Admin bundle's unified analytics endpoint. Body:
+  //   { reportType, restaurantId?, franchiseId?, timeInterval, startDate?, endDate? }
+  // `reportType` discriminates which aggregate to compute. Returned under a
+  // single `data` key; the frontend adapts per reportType.
+  fastify.post('/dashboard/report', { preHandler: requireAdmin }, async (request, reply) => {
+    const adminRestaurantId = request.admin!.restaurant_id
+    const body = z.object({
+      reportType: z.nativeEnum(ReportType),
+      restaurantId: z.number().int().optional(),
+      franchiseId: z.number().int().optional(),
+      timeInterval: z.nativeEnum(TimeInterval).default(TimeInterval.THIS_MONTH),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    }).passthrough().parse(request.body)
+
+    if (body.restaurantId && body.restaurantId !== adminRestaurantId) {
+      return reply.status(403).send({ error: 'Restaurant does not match admin tenant' })
+    }
+
+    const restaurantId = adminRestaurantId
+    const { startDate: start, endDate: end } = resolveDateRange(body.timeInterval, body.startDate, body.endDate)
+
+    switch (body.reportType) {
+      case ReportType.ORDER_DATA: {
+        let rq = supabase
+          .from('receipts')
+          .select('id, total, state, order_type, payment_method, created_at, franchise_id')
+          .eq('restaurant_id', restaurantId)
+          .gte('created_at', start)
+          .lte('created_at', end)
+        if (body.franchiseId) rq = rq.eq('franchise_id', body.franchiseId)
+        const { data: receipts } = await rq
+        const all = receipts ?? []
+        const delivered = all.filter((r) => r.state === 'DELIVERED')
+        const totalRevenue = delivered.reduce((s, r) => s + Number(r.total), 0)
+        const byType: Record<string, number> = {}
+        const byPayment: Record<string, number> = {}
+        for (const r of all) {
+          byType[r.order_type] = (byType[r.order_type] ?? 0) + 1
+          byPayment[r.payment_method] = (byPayment[r.payment_method] ?? 0) + 1
+        }
+        const ordersByDay: Record<string, { orders: number; revenue: number }> = {}
+        for (const r of delivered) {
+          const day = r.created_at.slice(0, 10)
+          if (!ordersByDay[day]) ordersByDay[day] = { orders: 0, revenue: 0 }
+          ordersByDay[day].orders += 1
+          ordersByDay[day].revenue += Number(r.total)
+        }
+        return {
+          data: {
+            totalOrders: all.length,
+            deliveredOrders: delivered.length,
+            cancelledOrders: all.filter((r) => r.state === 'CANCELLED').length,
+            totalRevenue: Math.round(totalRevenue * 100) / 100,
+            avgOrderValue: delivered.length > 0 ? Math.round((totalRevenue / delivered.length) * 100) / 100 : 0,
+            ordersByType: byType,
+            ordersByPayment: byPayment,
+            ordersByDay,
+          },
+        }
+      }
+
+      case ReportType.MENU_DATA: {
+        let rq = supabase
+          .from('receipts')
+          .select('id, franchise_id')
+          .eq('restaurant_id', restaurantId)
+          .eq('state', 'DELIVERED')
+          .gte('created_at', start)
+          .lte('created_at', end)
+        if (body.franchiseId) rq = rq.eq('franchise_id', body.franchiseId)
+        const { data: receipts } = await rq
+        const rids = (receipts ?? []).map((r) => r.id)
+        if (rids.length === 0) return { data: { items: [] } }
+
+        const { data: items } = await supabase
+          .from('receipt_items')
+          .select('item_id, name, name_arabic, price, quantity')
+          .in('receipt_id', rids)
+
+        const agg: Record<string, { name: string; name_arabic: string | null; quantity: number; revenue: number }> = {}
+        for (const ri of items ?? []) {
+          const key = String(ri.item_id ?? ri.name)
+          if (!agg[key]) agg[key] = { name: ri.name, name_arabic: ri.name_arabic, quantity: 0, revenue: 0 }
+          agg[key].quantity += ri.quantity
+          agg[key].revenue += Number(ri.price) * ri.quantity
+        }
+        return {
+          data: {
+            items: Object.entries(agg)
+              .map(([id, v]) => ({ itemId: id, ...v, revenue: Math.round(v.revenue * 100) / 100 }))
+              .sort((a, b) => b.quantity - a.quantity)
+              .slice(0, 100),
+          },
+        }
+      }
+
+      case ReportType.FEEDBACK_DATA: {
+        let fq = supabase
+          .from('feedback')
+          .select('id, rating, franchise_id, created_at')
+          .eq('restaurant_id', restaurantId)
+          .gte('created_at', start)
+          .lte('created_at', end)
+        if (body.franchiseId) fq = fq.eq('franchise_id', body.franchiseId)
+        const { data: fb } = await fq
+        const all = fb ?? []
+        const total = all.length
+        const avg = total > 0 ? all.reduce((s, f) => s + f.rating, 0) / total : 0
+        const dist: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+        for (const f of all) dist[f.rating] = (dist[f.rating] ?? 0) + 1
+        return {
+          data: {
+            totalFeedback: total,
+            averageRating: Math.round(avg * 100) / 100,
+            distribution: dist,
+          },
+        }
+      }
+
+      case ReportType.CUSTOMER_DATA: {
+        const { count: total } = await supabase
+          .from('customers')
+          .select('id', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId)
+
+        const { count: newCount } = await supabase
+          .from('customers')
+          .select('id', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId)
+          .gte('created_at', start)
+          .lte('created_at', end)
+
+        const { data: multiOrder } = await supabase
+          .from('receipts')
+          .select('customer_id')
+          .eq('restaurant_id', restaurantId)
+          .eq('state', 'DELIVERED')
+          .not('customer_id', 'is', null)
+
+        const orderCounts: Record<string, number> = {}
+        for (const r of multiOrder ?? []) {
+          if (r.customer_id) orderCounts[r.customer_id] = (orderCounts[r.customer_id] ?? 0) + 1
+        }
+        const repeatCustomers = Object.values(orderCounts).filter((c) => c > 1).length
+
+        return {
+          data: {
+            totalCustomers: total ?? 0,
+            newCustomers: newCount ?? 0,
+            repeatCustomers,
+          },
+        }
+      }
+
+      case ReportType.LOYALTY_DATA: {
+        let tq = supabase
+          .from('loyalty_transactions')
+          .select('id, type, points, created_at')
+          .eq('restaurant_id', restaurantId)
+          .gte('created_at', start)
+          .lte('created_at', end)
+        const { data: txs } = await tq
+        const all = txs ?? []
+        let earned = 0
+        let redeemed = 0
+        let adjusted = 0
+        for (const t of all) {
+          if (t.type === 'earn') earned += t.points
+          else if (t.type === 'redeem') redeemed += Math.abs(t.points)
+          else if (t.type === 'adjust') adjusted += t.points
+        }
+        return {
+          data: {
+            totalTransactions: all.length,
+            pointsEarned: earned,
+            pointsRedeemed: redeemed,
+            pointsAdjusted: adjusted,
+          },
+        }
+      }
+
+      default:
+        return reply.status(400).send({ error: 'Unknown reportType' })
     }
   })
 }
