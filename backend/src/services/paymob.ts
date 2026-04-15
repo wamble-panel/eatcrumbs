@@ -63,7 +63,11 @@ export async function createPaymentKey(params: CreatePaymentKeyParams): Promise<
 }
 
 export function verifyHmac(body: Record<string, any>, receivedHmac: string): boolean {
-  if (!env.PAYMOB_HMAC_SECRET) return true // dev mode — skip
+  if (!env.PAYMOB_HMAC_SECRET) {
+    // Fail closed: never accept a webhook we cannot verify.
+    // Set PAYMOB_HMAC_SECRET in your environment to enable Paymob callbacks.
+    return false
+  }
 
   // Paymob HMAC: concatenate specific fields in alphabetical order
   const fields = [

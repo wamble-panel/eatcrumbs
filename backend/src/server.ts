@@ -67,7 +67,7 @@ export async function build() {
   fastify.addHook('preHandler', resolveTenant)
 
   // ── Health check ───────────────────────────────────────────────────────────
-  fastify.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
+  fastify.get('/health', async () => ({ status: 'ok' }))
 
   // ── Admin routes  (prefix: /admin/v2) ─────────────────────────────────────
   await fastify.register(async (admin) => {

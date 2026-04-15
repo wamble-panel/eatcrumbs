@@ -62,7 +62,7 @@ export default async function customerUserRoutes(fastify: FastifyInstance) {
   fastify.post('/customer/analytics', { preHandler: optionalCustomer }, async (request) => {
     const restaurantId = request.restaurantId
     const body = z.object({
-      event: z.string().min(1).max(100),
+      event: z.string().min(1).max(100).regex(/^[\w:.\-/ ]+$/, 'Invalid event name'),
     }).parse(request.body)
 
     if (!restaurantId) return { success: true }  // no-op if tenant not resolved
@@ -170,10 +170,10 @@ export default async function customerUserRoutes(fastify: FastifyInstance) {
   // a tagged suffix.
   fastify.post('/user/customer-analytics', { preHandler: optionalCustomer }, async (request) => {
     const body = z.object({
-      event: z.string().min(1).max(100),
+      event: z.string().min(1).max(100).regex(/^[\w:.\-/ ]+$/, 'Invalid event name'),
       franchiseId: z.number().int().optional(),
       restaurantId: z.number().int().optional(),
-      franchiseSlug: z.string().optional(),
+      franchiseSlug: z.string().max(60).optional(),
       extraInfo: z.unknown().optional(),
     }).passthrough().parse(request.body ?? {})
 

@@ -46,9 +46,9 @@ const sendOtpBody = z.object({
 const verifyOtpBody = z.object({
   phoneNumber: z.string().min(7).max(20),
   restaurantId: z.number().int().positive(),
-  otp: z.string().length(6),
-  personName: z.string().optional(),
-  referralCode: z.string().optional(),
+  otp: z.string().length(6).regex(/^\d{6}$/),
+  personName: z.string().max(100).optional(),
+  referralCode: z.string().max(20).optional(),
 })
 
 export default async function customerAuthRoutes(fastify: FastifyInstance) {
@@ -82,7 +82,7 @@ export default async function customerAuthRoutes(fastify: FastifyInstance) {
   )
 
   // POST /customer/verify-otp
-  fastify.post('/customer/verify-otp', async (request, reply) => {
+  fastify.post('/customer/verify-otp', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = verifyOtpBody.parse(request.body)
     assertBodyMatchesTenant(request, body.restaurantId)
 
@@ -418,7 +418,7 @@ export default async function customerAuthRoutes(fastify: FastifyInstance) {
   // The storefront sends `{phoneNumber, name, code, isPartnerAppUser,
   // isMobileAppUser, isWebSelfServiceUser, email?, organization?, title?}`
   // and expects the same verify-and-login response as `/customer/verify-otp`.
-  fastify.post('/auth/check-otp', async (request, reply) => {
+  fastify.post('/auth/check-otp', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = z.object({
       phoneNumber: z.string().min(7).max(20),
       countryCode: z.string().optional(),
