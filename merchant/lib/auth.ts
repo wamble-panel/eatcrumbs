@@ -1,5 +1,7 @@
 import type { AdminPayload } from '../types'
 
+export type { AdminPayload }
+
 const TOKEN_KEY = 'admin-token'
 
 export function getToken(): string | null {
