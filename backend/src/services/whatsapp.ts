@@ -21,7 +21,7 @@ interface SendOrderParams {
 
 async function send(to: string, template: string, components: any[]) {
   if (!env.WHATSAPP_API_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) {
-    console.log(`[WhatsApp STUB] to=${to} template=${template}`)
+    // WhatsApp not configured — skip silently (no PII in logs)
     return
   }
   await axios.post(

@@ -1,8 +1,37 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import crypto from 'crypto'
 import { supabase } from '../../config/supabase'
 import { requireAdmin } from '../../middleware/auth'
 import { env } from '../../config/env'
+
+/** HMAC-sign the restaurant ID so the OAuth state cannot be forged. */
+function buildOAuthState(restaurantId: number): string {
+  const payload = String(restaurantId)
+  const sig = crypto.createHmac('sha256', env.JWT_SECRET).update(payload).digest('hex').slice(0, 32)
+  return Buffer.from(`${payload}:${sig}`).toString('base64url')
+}
+
+/** Verify and decode the state parameter; returns restaurantId or throws. */
+function parseOAuthState(state: string): number {
+  let decoded: string
+  try {
+    decoded = Buffer.from(state, 'base64url').toString()
+  } catch {
+    throw new Error('Invalid state encoding')
+  }
+  const colonIdx = decoded.lastIndexOf(':')
+  if (colonIdx === -1) throw new Error('Invalid state format')
+  const payload = decoded.slice(0, colonIdx)
+  const sig = decoded.slice(colonIdx + 1)
+  const expectedSig = crypto.createHmac('sha256', env.JWT_SECRET).update(payload).digest('hex').slice(0, 32)
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) {
+    throw new Error('State signature mismatch')
+  }
+  const id = Number(payload)
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid restaurant ID in state')
+  return id
+}
 
 const FOODICS_BASE = 'https://api.foodics.com/v5'
 
@@ -58,7 +87,7 @@ export default async function adminFoodicsRoutes(fastify: FastifyInstance) {
 
   // GET /foodics/auth-url — redirect URL for OAuth
   fastify.get('/foodics/auth-url', { preHandler: requireAdmin }, async (request) => {
-    const state = Buffer.from(String(request.admin!.restaurant_id)).toString('base64')
+    const state = buildOAuthState(request.admin!.restaurant_id)
     const redirectUri = `${env.BACKEND_URL ?? ''}/admin/v2/foodics/callback`
     const url = `https://console.foodics.com/authorize?client_id=${env.FOODICS_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`
     return { url }
@@ -67,13 +96,15 @@ export default async function adminFoodicsRoutes(fastify: FastifyInstance) {
   // GET /foodics/callback — OAuth callback
   fastify.get('/foodics/callback', async (request, reply) => {
     const q = z.object({
-      code: z.string(),
-      state: z.string(),
+      code: z.string().min(1),
+      state: z.string().min(1),
     }).parse(request.query)
 
-    const restaurantId = Number(Buffer.from(q.state, 'base64').toString())
-    if (!restaurantId || isNaN(restaurantId)) {
-      return reply.status(400).send({ error: 'Invalid state' })
+    let restaurantId: number
+    try {
+      restaurantId = parseOAuthState(q.state)
+    } catch {
+      return reply.status(400).send({ error: 'Invalid or tampered state parameter' })
     }
 
     const redirectUri = `${env.BACKEND_URL ?? ''}/admin/v2/foodics/callback`

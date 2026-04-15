@@ -5,18 +5,29 @@ import { verifyHmac } from '../../services/paymob'
 import { awardPoints, calculatePointsEarned, getPointingSystem } from '../../services/points'
 import { ReceiptState } from '../../types'
 
+const webhookQuerySchema = z.object({
+  hmac: z.string().min(1),
+})
+
+const webhookRedirectQuerySchema = z.object({
+  success: z.string().optional(),
+  order: z.string().optional(),
+})
+
 export default async function paymobWebhookRoutes(fastify: FastifyInstance) {
   // POST /webhooks/paymob  — payment transaction callback
   // Paymob sends this when a payment is completed (success or failure)
-  fastify.post('/paymob', async (request, reply) => {
+  fastify.post('/paymob', { config: { rateLimit: { max: 200, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = request.body as any
 
     // Paymob sends hmac as a query param: ?hmac=...
-    const hmacParam = (request.query as any)?.hmac
-    if (!hmacParam) {
+    const queryParsed = webhookQuerySchema.safeParse(request.query)
+    if (!queryParsed.success) {
       fastify.log.warn('Paymob webhook: missing hmac query param')
       return reply.status(400).send({ error: 'Missing hmac' })
     }
+
+    const hmacParam = queryParsed.data.hmac
 
     // Verify HMAC signature
     const isValid = verifyHmac(body, hmacParam)
@@ -108,7 +119,7 @@ export default async function paymobWebhookRoutes(fastify: FastifyInstance) {
   // GET /webhooks/paymob  — Paymob also sends a GET callback for redirect after payment
   // This is the customer-facing redirect after iframe payment
   fastify.get('/paymob', async (request, reply) => {
-    const q = request.query as any
+    const q = webhookRedirectQuerySchema.parse(request.query)
     const success = q.success === 'true'
     const paymobOrderId = q.order ?? ''
 

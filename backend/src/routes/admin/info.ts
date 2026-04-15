@@ -51,7 +51,7 @@ export default async function adminInfoRoutes(fastify: FastifyInstance) {
   // POST /restaurant/admin-analytics — track admin UI events
   fastify.post('/restaurant/admin-analytics', { preHandler: requireAdmin }, async (request) => {
     const body = z.object({
-      event: z.string(),
+      event: z.string().min(1).max(100).regex(/^[\w:.\-/ ]+$/, 'Invalid event name'),
       restaurantId: z.number().optional(),
     }).parse(request.body)
 
