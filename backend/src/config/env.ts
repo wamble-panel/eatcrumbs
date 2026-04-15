@@ -48,8 +48,10 @@ const schema = z.object({
 function loadEnv() {
   const result = schema.safeParse(process.env)
   if (!result.success) {
-    const missing = result.error.issues.map(i => i.path.join('.')).join(', ')
-    throw new Error(`Missing/invalid environment variables: ${missing}`)
+    const issues = result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`)
+    // Log to stderr so the error appears in Vercel function logs even on cold-start crash
+    console.error('[eatcrumbs] ENV VALIDATION FAILED:\n' + issues.map(s => '  ' + s).join('\n'))
+    throw new Error(`Missing/invalid environment variables: ${issues.join(', ')}`)
   }
   return result.data
 }
