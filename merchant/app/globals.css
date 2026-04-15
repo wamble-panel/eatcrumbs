@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sidebar-w: 220px;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --sidebar-bg: #1e293b;
+  --sidebar-text: #94a3b8;
+  --sidebar-text-active: #f1f5f9;
+  --sidebar-hover: rgba(255,255,255,.06);
+  --bg: #f1f5f9;
+  --card-bg: #ffffff;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --radius: 10px;
+
+  /* Order state colours */
+  --pending: #f59e0b;
+  --accepted: #3b82f6;
+  --ready: #22c55e;
+  --on-way: #8b5cf6;
+  --delivered: #94a3b8;
+  --cancelled: #ef4444;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+
+/* ── Layout ─────────────────────────────────────────────────────────────────── */
+.dash-shell   { display: flex; min-height: 100vh; }
+.dash-content { flex: 1; min-width: 0; overflow-y: auto; }
+
+/* ── Card ───────────────────────────────────────────────────────────────────── */
+.card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: .5rem 1rem; border-radius: 8px; font-size: .875rem; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
+.btn-primary  { background: var(--primary);    color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-danger   { background: #ef4444; color: #fff; }
+.btn-danger:hover { background: #dc2626; }
+.btn-ghost    { background: transparent; color: var(--text); border: 1.5px solid var(--border); }
+.btn-ghost:hover { background: var(--bg); }
+.btn-success  { background: #22c55e; color: #fff; }
+.btn-success:hover { background: #16a34a; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Input ──────────────────────────────────────────────────────────────────── */
+.input { width: 100%; border: 1.5px solid var(--border); border-radius: 8px; padding: .6rem .9rem; font-size: .9rem; outline: none; background: var(--card-bg); color: var(--text); transition: border-color .15s; }
+.input:focus { border-color: var(--primary); }
+select.input { cursor: pointer; }
+
+/* ── Spinner ─────────────────────────────────────────────────────────────────── */
+.spinner { width: 20px; height: 20px; border: 2.5px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Modal ──────────────────────────────────────────────────────────────────── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; animation: fadeIn .15s; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal { background: var(--card-bg); border-radius: 14px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; animation: slideUp .2s; }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 0; }
+.modal-body   { padding: 20px 24px; }
+.modal-footer { padding: 0 24px 20px; display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── State badges ────────────────────────────────────────────────────────────── */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.badge-pending   { background: #fef3c7; color: #b45309; }
+.badge-accepted  { background: #dbeafe; color: #1d4ed8; }
+.badge-ready     { background: #dcfce7; color: #15803d; }
+.badge-on-way    { background: #ede9fe; color: #6d28d9; }
+.badge-delivered { background: #f1f5f9; color: #475569; }
+.badge-cancelled { background: #fee2e2; color: #b91c1c; }
+
+/* ── Order card new-order pulse ──────────────────────────────────────────────── */
+@keyframes newOrder { 0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,.4); } 50% { box-shadow: 0 0 0 8px rgba(59,130,246,0); } }
+.new-order-pulse { animation: newOrder 1.5s ease-out 3; }
+
+/* ── Toggle switch ───────────────────────────────────────────────────────────── */
+.toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-track { position: absolute; inset: 0; background: var(--border); border-radius: 999px; cursor: pointer; transition: background .2s; }
+.toggle input:checked + .toggle-track { background: var(--primary); }
+.toggle-track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: transform .2s; }
+.toggle input:checked + .toggle-track::after { transform: translateX(20px); }
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+/* ── Form field ──────────────────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.field label { font-size: .8rem; font-weight: 600; color: var(--text-muted); }
+
+/* ── Table ───────────────────────────────────────────────────────────────────── */
+.table { width: 100%; border-collapse: collapse; }
+.table th { text-align: left; font-size: .75rem; font-weight: 700; color: var(--text-muted); padding: 8px 12px; border-bottom: 1.5px solid var(--border); text-transform: uppercase; letter-spacing: .04em; }
+.table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: .875rem; }
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: #f8fafc; }
