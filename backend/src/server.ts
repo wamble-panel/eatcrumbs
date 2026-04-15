@@ -30,11 +30,11 @@ import paymobWebhookRoutes from './routes/webhooks/paymob'
 
 export async function build() {
   const fastify = Fastify({
+    // pino-pretty transport uses worker threads that break under esbuild
+    // bundling (Vercel). Always emit structured JSON — use `pino-pretty` as a
+    // CLI pipe locally: `npx tsx src/server.ts | npx pino-pretty`
     logger: {
       level: env.NODE_ENV === 'production' ? 'warn' : 'info',
-      ...(env.NODE_ENV !== 'production' && {
-        transport: { target: 'pino-pretty', options: { colorize: true } },
-      }),
     },
     trustProxy: true,
   })
