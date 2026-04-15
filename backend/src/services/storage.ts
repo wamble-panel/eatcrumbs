@@ -1,5 +1,5 @@
 import { supabase } from '../config/supabase'
-import { v4 as uuidv4 } from 'uuid'
+import { randomUUID } from 'crypto'
 
 const BUCKET = 'restaurant-images'
 
@@ -9,7 +9,7 @@ export async function uploadItemImage(
   mimeType: string,
 ): Promise<string> {
   const ext = mimeType === 'image/png' ? 'png' : 'jpg'
-  const path = `${restaurantId}/items/${uuidv4()}.${ext}`
+  const path = `${restaurantId}/items/${randomUUID()}.${ext}`
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, fileBuffer, {
     contentType: mimeType,
