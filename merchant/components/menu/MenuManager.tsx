@@ -95,7 +95,7 @@ export default function MenuManager() {
           ic[existing] = { item: saved }
           return { ...cat, itemCategories: ic }
         }
-        if (saved.category_id === cat.id || (itemModal && (itemModal as { categoryId?: number }).categoryId === cat.id)) {
+        if (itemModal && (itemModal as { categoryId?: number }).categoryId === cat.id) {
           return { ...cat, itemCategories: [...(cat.itemCategories ?? []), { item: saved }] }
         }
         return cat
