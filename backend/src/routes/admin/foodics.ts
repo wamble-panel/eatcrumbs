@@ -159,8 +159,8 @@ export default async function adminFoodicsRoutes(fastify: FastifyInstance) {
     // Mark restaurant as Foodics restaurant
     await supabase.from('restaurants').update({ is_foodics: true }).eq('id', restaurantId)
 
-    const adminFrontend = env.ADMIN_FRONTEND_URL ?? 'https://admin.prepit.app'
-    return reply.redirect(`${adminFrontend}/foodics?connected=true`)
+    const merchantFrontend = env.MERCHANT_FRONTEND_URL || env.ADMIN_FRONTEND_URL || 'https://admin.prepit.app'
+    return reply.redirect(`${merchantFrontend}/foodics?connected=true`)
   })
 
   // POST /foodics/disconnect

@@ -42,6 +42,7 @@ const schema = z.object({
 
   BACKEND_URL: z.string().optional().default(''),
   ADMIN_FRONTEND_URL: z.string().optional().default('https://admin.prepit.app'),
+  MERCHANT_FRONTEND_URL: z.string().optional().default(''),
   CUSTOMER_FRONTEND_URL: z.string().optional().default('https://prepit.app'),
 })
 
