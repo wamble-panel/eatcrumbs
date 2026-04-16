@@ -207,10 +207,9 @@ export default async function adminFoodicsRoutes(fastify: FastifyInstance) {
           .from('categories')
           .upsert({
             restaurant_id: restaurantId,
-            name: fc.name,
-            name_arabic: fc.name_ar ?? null,
-            is_active: fc.is_active ?? true,
-          }, { onConflict: 'restaurant_id,name' })
+            category_name: fc.name,
+            category_name_arabic: fc.name_ar ?? null,
+          }, { onConflict: 'restaurant_id,category_name' })
           .select('id')
           .single()
 
@@ -235,7 +234,7 @@ export default async function adminFoodicsRoutes(fastify: FastifyInstance) {
       }
 
       // Bump menu version
-      await supabase.rpc('bump_menu_version', { p_restaurant_id: restaurantId })
+      await supabase.from('restaurants').update({ menu_version: String(Date.now()) }).eq('id', restaurantId)
 
       if (syncId) {
         await supabase.from('foodics_syncs').update({
@@ -249,7 +248,7 @@ export default async function adminFoodicsRoutes(fastify: FastifyInstance) {
     } catch (err: any) {
       if (syncId) {
         await supabase.from('foodics_syncs').update({
-          status: 'error',
+          status: 'failed',
           finished_at: new Date().toISOString(),
           error: err.message,
         }).eq('id', syncId)
