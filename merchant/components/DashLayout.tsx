@@ -24,6 +24,7 @@ const PAGE_NAMES: Record<string, string> = {
   '/feedback':      'Feedback',
   '/notifications': 'Notifications',
   '/foodics':       'Foodics',
+  '/language':      'Language',
 }
 
 export default function DashLayout({ children, pageTitle }: Props) {
@@ -81,26 +82,25 @@ export default function DashLayout({ children, pageTitle }: Props) {
       />
 
       <div className="dash-content">
-        {/* TopBar — fixed 3.5rem, matches reference exactly */}
+        {/* TopBar — sticky within content column, does NOT cover the sidebar */}
         <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
           height: '3.5rem',
           background: 'var(--bg)',
-          zIndex: 2001,
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 2rem',
           boxShadow: '0 1px 0 rgba(148,194,195,.3)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
         }}>
-          {/* Left: hamburger + page name */}
+          {/* Left: hamburger (mobile only via CSS) + page name */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
               onClick={() => setSidebarOpen(true)}
-              className="flex md:hidden"
+              className="hamburger-btn"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', padding: 4 }}
             >
               <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -136,7 +136,10 @@ export default function DashLayout({ children, pageTitle }: Props) {
           </div>
         </div>
 
-        {children}
+        {/* Scrollable page area */}
+        <div className="dash-main">
+          {children}
+        </div>
       </div>
     </div>
   )
