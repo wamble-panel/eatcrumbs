@@ -223,12 +223,13 @@ export default async function adminFoodicsRoutes(fastify: FastifyInstance) {
             .upsert({
               restaurant_id: restaurantId,
               category_id: cat.id,
-              name: p.name,
-              name_arabic: p.name_ar ?? null,
+              item_name: p.name,
+              item_name_arabic: p.name_ar ?? null,
               description: p.description ?? null,
               price: p.price ?? 0,
-              is_active: p.is_active ?? true,
-            }, { onConflict: 'restaurant_id,name,category_id' })
+              is_visible: true,
+              is_available: p.is_active ?? true,
+            }, { onConflict: 'restaurant_id,item_name,category_id' })
           itemsSynced++
         }
       }

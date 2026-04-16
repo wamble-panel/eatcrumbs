@@ -77,6 +77,8 @@ export default function FoodicsPage() {
 
   async function loadAll() {
     setLoading(true)
+    // Always pre-fetch auth URL so the Connect button is available if needed
+    adminGet<{ url: string }>('/foodics/auth-url').then(r => setAuthUrl(r.url)).catch(() => {})
     try {
       const [s, h] = await Promise.all([
         adminGet<FoodicsStatus>('/foodics/status'),
@@ -84,9 +86,6 @@ export default function FoodicsPage() {
       ])
       setStatus(s)
       setHistory(h.history)
-      if (!s.connected) {
-        adminGet<{ url: string }>('/foodics/auth-url').then(r => setAuthUrl(r.url)).catch(() => {})
-      }
     } catch (e: unknown) { setError((e as Error).message) }
     finally { setLoading(false) }
   }
