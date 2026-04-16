@@ -74,8 +74,18 @@ ul { list-style: none; padding: 0; }
 button { cursor: pointer; }
 
 /* ── Layout ──────────────────────────────────────────────────────────────────── */
-.dash-shell   { display: flex; min-height: 100vh; }
-.dash-content { flex: 1; min-width: 0; overflow-y: auto; padding-top: 3.5rem; }
+.dash-shell   { display: flex; height: 100vh; overflow: hidden; }
+/* Content column: TopBar (sticky) on top, then scrollable page area below */
+.dash-content { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.dash-main    { flex: 1; overflow-y: auto; }
+
+/* Sidebar: hidden on mobile, block on ≥768px */
+.sidebar-desktop { display: none; }
+@media (min-width: 768px) { .sidebar-desktop { display: block; } }
+
+/* Hamburger: visible on mobile, hidden on desktop */
+.hamburger-btn { display: flex; align-items: center; }
+@media (min-width: 768px) { .hamburger-btn { display: none; } }
 
 /* ── Typography ─────────────────────────────────────────────────────────────── */
 .main-title {

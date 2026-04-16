@@ -48,7 +48,7 @@ export default function BranchModal({ franchise, schedule, onClose, onSaved }: P
     setSaving(true)
     setError(null)
     try {
-      const updated = await adminPost<Franchise>('/franchise/edit', {
+      const res = await adminPost<{ franchise: Franchise }>('/franchise/edit', {
         id: franchise.id,
         name: name.trim(),
         nameArabic: nameAr.trim() || null,
@@ -63,7 +63,7 @@ export default function BranchModal({ franchise, schedule, onClose, onSaved }: P
         franchiseId: franchise.id,
         slots,
       })
-      onSaved(updated)
+      onSaved(res.franchise)
     } catch (e: unknown) {
       setError((e as Error).message)
     } finally {

@@ -229,6 +229,60 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance) {
     }
   })
 
+  // GET /dashboard/top-customers
+  fastify.get('/dashboard/top-customers', { preHandler: requireAdmin }, async (request) => {
+    const restaurantId = request.admin!.restaurant_id
+    const query = rangeQuery.parse(request.query)
+    const { startDate: start, endDate: end } = resolveDateRange(query.timeInterval, query.startDate, query.endDate)
+
+    let rq = supabase
+      .from('receipts')
+      .select('customer_id, total, state')
+      .eq('restaurant_id', restaurantId)
+      .eq('state', 'DELIVERED')
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .not('customer_id', 'is', null)
+
+    if (query.franchiseId) rq = rq.eq('franchise_id', query.franchiseId)
+
+    const { data: receipts } = await rq
+
+    // Aggregate by customer_id
+    const agg: Record<string, { orders: number; total: number }> = {}
+    for (const r of receipts ?? []) {
+      if (!r.customer_id) continue
+      if (!agg[r.customer_id]) agg[r.customer_id] = { orders: 0, total: 0 }
+      agg[r.customer_id].orders += 1
+      agg[r.customer_id].total += Number(r.total)
+    }
+
+    const topIds = Object.entries(agg)
+      .sort((a, b) => b[1].orders - a[1].orders)
+      .slice(0, 10)
+      .map(([id]) => id)
+
+    if (topIds.length === 0) return { customers: [] }
+
+    const { data: customerRows } = await supabase
+      .from('customers')
+      .select('id, name, phone')
+      .in('id', topIds)
+
+    const customerMap: Record<string, { name: string | null; phone: string | null }> = {}
+    for (const c of customerRows ?? []) customerMap[String(c.id)] = { name: c.name, phone: c.phone }
+
+    const customers = topIds.map((id) => ({
+      customerId: id,
+      name: customerMap[id]?.name ?? null,
+      phone: customerMap[id]?.phone ?? null,
+      orders: agg[id].orders,
+      total: Math.round(agg[id].total * 100) / 100,
+    }))
+
+    return { customers }
+  })
+
   // ── POST /dashboard/report ──────────────────────────────────────────────────
   // Admin bundle's unified analytics endpoint. Body:
   //   { reportType, restaurantId?, franchiseId?, timeInterval, startDate?, endDate? }
