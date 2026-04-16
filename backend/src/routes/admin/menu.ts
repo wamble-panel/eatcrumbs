@@ -40,7 +40,6 @@ const categoryBody = z.object({
   category_name: z.string().min(1),
   category_name_arabic: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
-  description_arabic: z.string().optional().nullable(),
 })
 
 const itemBody = z.object({
@@ -134,7 +133,6 @@ export default async function adminMenuRoutes(fastify: FastifyInstance) {
       category_name: body.category_name,
       category_name_arabic: body.category_name_arabic,
       description: body.description,
-      description_arabic: body.description_arabic,
     }).select().single()
 
     if (error) throw new Error(error.message)
@@ -152,7 +150,6 @@ export default async function adminMenuRoutes(fastify: FastifyInstance) {
       category_name: body.category_name,
       category_name_arabic: body.category_name_arabic,
       description: body.description,
-      description_arabic: body.description_arabic,
       updated_at: new Date().toISOString(),
     }).eq('id', body.id!).eq('restaurant_id', restaurantId).select().single()
 
